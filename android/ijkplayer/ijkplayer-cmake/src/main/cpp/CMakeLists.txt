@@ -54,6 +54,7 @@ set(FFMPEG_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/ijkffmpeg/ijkffmpeg-${
 set(OPENSSL_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/openssl/openssl-${ARCH}/lib)
 set(SOUNDTOUCH_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/soundtouch/soundtouch-${ARCH}/lib)
 set(YUV_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/yuv/yuv-${ARCH}/lib)
+set(XML2_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/xml2/xml2-${ARCH}/lib)
 
 include_directories(
     third-libs/ijkffmpeg/ijkffmpeg-${ARCH}/include
@@ -91,6 +92,7 @@ target_link_libraries(ijkffmpeg-lib INTERFACE
     ${FFMPEG_LIB_DIR}/libswresample.a
     ${FFMPEG_LIB_DIR}/libswscale.a
     ${FFMPEG_LIB_DIR}/libavutil.a
+    ${XML2_LIB_DIR}/libxml2.a
 )
 
 find_library(z-lib z REQUIRED)

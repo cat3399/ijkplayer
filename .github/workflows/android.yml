@@ -12,16 +12,24 @@ on:
         description: publish beta edition
         default: true
         required: false
+
+permissions:
+  contents: write
 jobs:
   build:
     name: build-android-ijk-aar
-    runs-on: macos-15
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
           submodules: recursive
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
     - name: Prepare Beta Version
       if: ${{ inputs.beta == true }}
       run: |
@@ -38,10 +46,44 @@ jobs:
       uses: cardinalby/export-env-action@v2
       with:
         envFile: 'constants.env'
-    - name: Download Pre Compiled Dependencies
-      run: cd android && ./install-ffmpeg.sh
-    - name: Build android arr
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          curl unzip \
+          pkg-config nasm yasm \
+          make
+    - name: Install Android components
+      run: |
+        sdkmanager --install \
+          "platforms;android-35" \
+          "build-tools;35.0.0" \
+          "cmake;3.22.1" \
+          "ndk;27.2.12479018"
+        echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+        echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+        echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+    - name: Download precompiled third-libs
+      run: |
+        cd FFToolChain
+        ./main.sh install -p android -l "soundtouch yuv openssl xml2"
+    - name: Build ijkffmpeg (dash+libxml2 enabled)
+      run: |
+        cd FFToolChain
+        ./main.sh init -p android -l ijkffmpeg
+        ./main.sh compile -p android -l ijkffmpeg -c rebuild
+    - name: Build android aar
       run: cd android && ./build-aar.sh
+    - name: Verify dash demuxer enabled
+      run: |
+        set -euo pipefail
+        aar=$(ls -1 android/ijkplayer/ijkplayer-cmake/build/outputs/aar/*.aar | head -n 1)
+        mkdir -p /tmp/ijk-aar && cd /tmp/ijk-aar
+        unzip -q "$GITHUB_WORKSPACE/$aar"
+        strings jni/arm64-v8a/libijkplayer.so | grep -- "--enable-demuxer=dash"
+        strings jni/arm64-v8a/libijkplayer.so | grep -- "--enable-libxml2"
     - name: Upload Release Asset
       env:
         GH_TOKEN: ${{ github.token }}
