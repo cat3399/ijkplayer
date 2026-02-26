@@ -54,7 +54,7 @@ jobs:
         sudo apt-get install -y --no-install-recommends \
           curl unzip \
           pkg-config nasm yasm \
-          make
+          make binutils
     - name: Install Android components
       run: |
         sdkmanager --install \
@@ -71,6 +71,7 @@ jobs:
         ./main.sh install -p android -l "soundtouch yuv openssl xml2"
     - name: Build ijkffmpeg (dash+libxml2 enabled)
       run: |
+        set -euo pipefail
         cd FFToolChain
         ./main.sh init -p android -l ijkffmpeg
         ./main.sh compile -p android -l ijkffmpeg -c rebuild
