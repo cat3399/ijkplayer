@@ -89,5 +89,18 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        branch=$(git branch --show-current)
-        gh release create ${{ env.TAG }} --target $branch -t "👏👏 ijkplayer-cmake-aar ${{ env.TAG }}" android/ijkplayer/ijkplayer-cmake/build/outputs/aar/*.*
+        set -euo pipefail
+        tag="${{ env.TAG }}"
+        title="👏👏 ijkplayer-cmake-aar ${tag}"
+        branch="${GITHUB_REF_NAME:-$(git branch --show-current)}"
+        shopt -s nullglob
+        assets=(android/ijkplayer/ijkplayer-cmake/build/outputs/aar/*.*)
+        if ((${#assets[@]} == 0)); then
+          echo "No AAR assets found"
+          exit 1
+        fi
+        if gh release view "$tag" >/dev/null 2>&1; then
+          gh release upload "$tag" "${assets[@]}" --clobber
+        else
+          gh release create "$tag" --target "$branch" -t "$title" "${assets[@]}"
+        fi
