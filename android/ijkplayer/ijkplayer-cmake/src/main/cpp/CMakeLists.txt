@@ -80,8 +80,8 @@ set_target_properties(yuv-lib PROPERTIES
 add_library(openssl-lib INTERFACE)
 # 依次为 INTERFACE 库添加链接库
 target_link_libraries(openssl-lib INTERFACE
-    ${OPENSSL_LIB_DIR}/libcrypto.a
     ${OPENSSL_LIB_DIR}/libssl.a
+    ${OPENSSL_LIB_DIR}/libcrypto.a
 )
 
 # ijkffmpeg 创建一个 INTERFACE 库，用于逻辑上组合多个静态库
