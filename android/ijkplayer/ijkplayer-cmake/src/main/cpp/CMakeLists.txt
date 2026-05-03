@@ -49,7 +49,9 @@ add_library(${CMAKE_PROJECT_NAME}
     ${SOURCE_SOUNDTOUCH}
 )
 
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-Wl,-z,max-page-size=16384")
+if (DEFINED ANDROID_PLATFORM_LEVEL AND ANDROID_PLATFORM_LEVEL GREATER_EQUAL 21)
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
 set(FFMPEG_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/ijkffmpeg/ijkffmpeg-${ARCH}/lib)
 set(OPENSSL_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/openssl/openssl-${ARCH}/lib)
 set(SOUNDTOUCH_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/soundtouch/soundtouch-${ARCH}/lib)
