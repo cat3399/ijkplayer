@@ -65,7 +65,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             autoconf automake libtool \
-            binutils cmake curl git make nasm ninja-build pkg-config unzip yasm zip
+            binutils cmake curl git libtinfo6 make nasm ninja-build pkg-config unzip yasm zip
+
+          if ! ldconfig -p | grep -q 'libtinfo.so.5'; then
+            libtinfo="$(ldconfig -p | awk '/libtinfo.so.6/{print $NF; exit}')"
+            if [[ -z "$libtinfo" ]]; then
+              echo "libtinfo.so.6 not found; NDK r17c needs libtinfo.so.5 compatibility" >&2
+              exit 1
+            fi
+            sudo ln -sf "$libtinfo" /usr/lib/x86_64-linux-gnu/libtinfo.so.5
+            sudo ldconfig
+          fi
 
       - name: Prepare version
         id: version
