@@ -1,0 +1,191 @@
+name: android4-ijkplayer-aar
+
+on:
+  workflow_dispatch:
+    inputs:
+      beta:
+        type: boolean
+        description: publish beta edition
+        default: true
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build-android4-ijk-aar
+    runs-on: ubuntu-latest
+    env:
+      MR_ANDROID_API: 14
+      IJK_ANDROID4_ARCHS: "armv7a x86"
+      IJK_ANDROID4_ABIS: "armeabi-v7a x86"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK r17c
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r17c
+          add-to-path: true
+          local-cache: true
+
+      - name: Export Android build env
+        run: |
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+
+      - name: Install Android components
+        run: |
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "cmake;3.22.1"
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake libtool \
+            binutils cmake curl git make nasm ninja-build pkg-config unzip yasm zip
+
+      - name: Prepare version
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(grep -m 1 VERSION_NAME= version.sh | awk -F = '{print $2}' | xargs)"
+          release_date="$(TZ=UTC-8 date +'%y%m%d%H%M%S')"
+          if [[ "${{ inputs.beta }}" == "true" ]]; then
+            tag="k${version}-android4-beta-${release_date}"
+          else
+            tag="k${version}-android4"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release_date=${release_date}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Android 4.0 third-libs
+        uses: actions/cache@v4
+        with:
+          path: |
+            FFToolChain/build/product/android
+            FFToolChain/build/src/android
+          key: ${{ runner.os }}-ijk-android4-api14-32bit-${{ hashFiles('FFToolChain/configs/**', 'FFToolChain/patches/**', 'FFToolChain/do-compile/android/**', 'FFToolChain/tools/export-android*.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-ijk-android4-api14-32bit-
+
+      - name: Build cached third-libs
+        run: |
+          set -euo pipefail
+          missing=0
+          for arch in $IJK_ANDROID4_ARCHS; do
+            for item in \
+              "soundtouch/soundtouch-${arch}/lib/libSoundTouch.a" \
+              "yuv/yuv-${arch}/lib/libyuv.a" \
+              "openssl/openssl-${arch}/lib/libssl.a" \
+              "openssl/openssl-${arch}/lib/libcrypto.a" \
+              "xml2/xml2-${arch}/lib/libxml2.a" \
+              "ijkffmpeg/ijkffmpeg-${arch}/lib/libavformat.a"; do
+              if [[ ! -s "FFToolChain/build/product/android/universal/${item}" ]]; then
+                echo "missing cached third-lib: ${item}"
+                missing=1
+              fi
+            done
+          done
+
+          if [[ "$missing" == "0" ]]; then
+            echo "third-libs cache hit"
+            exit 0
+          fi
+
+          cd FFToolChain
+          ./main.sh init -p android -a "$IJK_ANDROID4_ARCHS" -l "soundtouch yuv openssl xml2 ijkffmpeg"
+          ./main.sh compile -p android -a "$IJK_ANDROID4_ARCHS" -l "soundtouch yuv openssl xml2 ijkffmpeg" -c build
+
+      - name: Build API14 native libraries
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/android/ijkplayer/ijkplayer-cmake/src/main/cpp"
+          out="$GITHUB_WORKSPACE/android/ijkplayer/ijkplayer-cmake/src/main/jniLibs"
+          build_root="$GITHUB_WORKSPACE/android/ijkplayer/ijkplayer-cmake/.android4-cmake"
+          cmake_toolchain="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+
+          for abi in $IJK_ANDROID4_ABIS; do
+            cmake -S "$src" -B "$build_root/$abi" \
+              -DCMAKE_TOOLCHAIN_FILE="$cmake_toolchain" \
+              -DANDROID_ABI="$abi" \
+              -DANDROID_PLATFORM=android-14 \
+              -DANDROID_NATIVE_API_LEVEL=14 \
+              -DANDROID_STL=c++_static \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_LIBRARY_OUTPUT_DIRECTORY="$out/$abi"
+            cmake --build "$build_root/$abi" --target ijkplayer --parallel "$(nproc)"
+            test -s "$out/$abi/libijkplayer.so"
+          done
+
+      - name: Build Android 4.0 AAR
+        run: |
+          cd android/ijkplayer
+          ./gradlew :ijkplayer-cmake:assembleRelease -PijkUsePrebuiltJni=true --no-daemon
+
+      - name: Verify Android 4.0 AAR
+        run: |
+          set -euo pipefail
+          aar="$(ls -1 android/ijkplayer/ijkplayer-cmake/build/outputs/aar/*release.aar | head -n 1)"
+          unpack="$RUNNER_TEMP/ijk-android4-aar"
+          mkdir -p "$unpack"
+          unzip -q "$aar" -d "$unpack"
+
+          test ! -e "$unpack/jni/arm64-v8a/libijkplayer.so"
+          test ! -e "$unpack/jni/x86_64/libijkplayer.so"
+
+          readelf="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          if [[ ! -x "$readelf" ]]; then
+            readelf="$(command -v readelf)"
+          fi
+          for abi in $IJK_ANDROID4_ABIS; do
+            so="$unpack/jni/$abi/libijkplayer.so"
+            test -s "$so"
+            strings "$so" | grep -- "--enable-demuxer=dash"
+            strings "$so" | grep -- "--enable-libxml2"
+            "$readelf" -d "$so"
+          done
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ijkplayer-android4-aar-${{ steps.version.outputs.release_date }}
+          path: android/ijkplayer/ijkplayer-cmake/build/outputs/aar/*.aar
+
+      - name: Upload Release Asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          title="ijkplayer Android 4.0 DASH ${tag}"
+          branch="${GITHUB_REF_NAME:-$(git branch --show-current)}"
+          assets=(android/ijkplayer/ijkplayer-cmake/build/outputs/aar/*.aar)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" --target "$branch" -t "$title" "${assets[@]}"
+          fi
