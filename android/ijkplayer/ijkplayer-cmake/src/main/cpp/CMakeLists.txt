@@ -49,7 +49,9 @@ add_library(${CMAKE_PROJECT_NAME}
     ${SOURCE_SOUNDTOUCH}
 )
 
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-Wl,-z,max-page-size=16384")
+if (DEFINED ANDROID_PLATFORM_LEVEL AND ANDROID_PLATFORM_LEVEL GREATER_EQUAL 21)
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
 set(FFMPEG_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/ijkffmpeg/ijkffmpeg-${ARCH}/lib)
 set(OPENSSL_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/openssl/openssl-${ARCH}/lib)
 set(SOUNDTOUCH_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-libs/soundtouch/soundtouch-${ARCH}/lib)
@@ -78,8 +80,8 @@ set_target_properties(yuv-lib PROPERTIES
 add_library(openssl-lib INTERFACE)
 # 依次为 INTERFACE 库添加链接库
 target_link_libraries(openssl-lib INTERFACE
-    ${OPENSSL_LIB_DIR}/libcrypto.a
     ${OPENSSL_LIB_DIR}/libssl.a
+    ${OPENSSL_LIB_DIR}/libcrypto.a
 )
 
 # ijkffmpeg 创建一个 INTERFACE 库，用于逻辑上组合多个静态库
