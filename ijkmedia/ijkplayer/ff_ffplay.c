@@ -1209,15 +1209,15 @@ static void check_external_clock_speed(VideoState *is) {
 /* seek in the stream */
 static void stream_seek(VideoState *is, int64_t pos, int64_t rel, int seek_by_bytes)
 {
-    if (!is->seek_req) {
-        is->seek_pos = pos;
-        is->seek_rel = rel;
-        is->seek_flags &= ~AVSEEK_FLAG_BYTE;
-        if (seek_by_bytes)
-            is->seek_flags |= AVSEEK_FLAG_BYTE;
-        is->seek_req = 1;
-        SDL_CondSignal(is->continue_read_thread);
-    }
+    is->seek_pos = pos;
+    is->seek_rel = rel;
+    is->seek_flags &= ~AVSEEK_FLAG_BYTE;
+    if (seek_by_bytes)
+        is->seek_flags |= AVSEEK_FLAG_BYTE;
+    if (++is->seek_generation == 0)
+        is->seek_generation = 1;
+    is->seek_req = 1;
+    SDL_CondSignal(is->continue_read_thread);
 }
 
 /* pause or resume the video */
@@ -3072,7 +3072,9 @@ out:
 static int decode_interrupt_cb(void *ctx)
 {
     VideoState *is = ctx;
-    return is->abort_request;
+    return is->abort_request ||
+           (is->active_seek_generation &&
+            is->active_seek_generation != is->seek_generation);
 }
 
 static int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue, int min_frames) {
@@ -3413,6 +3415,7 @@ static int read_thread(void *arg)
         }
 #endif
         if (is->seek_req) {
+            int seek_generation = is->seek_generation;
             int64_t seek_target = is->seek_pos;
             int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
             int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
@@ -3421,7 +3424,15 @@ static int read_thread(void *arg)
 
             ffp_toggle_buffering(ffp, 1);
             ffp_notify_msg3(ffp, FFP_MSG_BUFFERING_UPDATE, 0, 0);
+            is->active_seek_generation = seek_generation;
             ret = avformat_seek_file(is->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
+            is->active_seek_generation = 0;
+            if (seek_generation != is->seek_generation) {
+                av_log(ffp, AV_LOG_VERBOSE,
+                       "discard superseded seek generation %d, latest %d\n",
+                       seek_generation, is->seek_generation);
+                continue;
+            }
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR,
                        "%s: error while seeking\n", is->ic->url);

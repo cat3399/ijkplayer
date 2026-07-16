@@ -282,6 +282,8 @@ typedef struct VideoState {
     int last_paused;
     int queue_attachments_req;
     int seek_req;
+    int seek_generation;
+    int active_seek_generation;
     int seek_flags;
     int64_t seek_pos;
     int64_t seek_rel;
