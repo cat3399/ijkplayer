@@ -38,6 +38,11 @@ include_directories(${ijkmedia}/ijkplayer)
 file(GLOB_RECURSE SOURCE_IJKJ4A ${ijkmedia}/ijkj4a/*.c  ${ijkmedia}/ijkj4a/*.cpp)
 file(GLOB_RECURSE SOURCE_SDL ${ijkmedia}/ijksdl/*.c  ${ijkmedia}/ijksdl/*.cpp)
 file(GLOB_RECURSE SOURCE_IJKPLAYER ${ijkmedia}/ijkplayer/*.c ${ijkmedia}/ijkplayer/*.cpp)
+# FFmpeg 5+ no longer supports registering external demuxers at runtime. These
+# legacy live-hook demuxers must eventually be built into libavformat itself;
+# keep them out of the core FFmpeg 7 compilation checkpoint for now.
+list(FILTER SOURCE_IJKPLAYER EXCLUDE REGEX "/ijkavformat/(ijklivehook|ijklas|ijkasync)\\.c$")
+list(FILTER SOURCE_IJKPLAYER EXCLUDE REGEX "/ijkavformat/(ijkioffio|ijklongurl|ijksegment|ijkurlhook)\\.c$")
 file(GLOB_RECURSE SOURCE_SOUNDTOUCH ${ijkmedia}/ijksoundtouch/ijksoundtouch_wrap.cpp)
 
 add_library(${CMAKE_PROJECT_NAME}

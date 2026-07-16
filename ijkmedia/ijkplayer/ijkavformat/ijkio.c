@@ -54,7 +54,7 @@ static int ijkio_open(URLContext *h, const char *arg, int flags, AVDictionary **
     if (!c || !c->io_manager_ctx_intptr)
         return -1;
 
-    IjkIOManagerContext *manager_ctx = (IjkIOManagerContext *)av_dict_strtoptr(c->io_manager_ctx_intptr);
+    IjkIOManagerContext *manager_ctx = (IjkIOManagerContext *)ijk_av_dict_strtoptr(c->io_manager_ctx_intptr);
     manager_ctx->ijkio_interrupt_callback = (IjkAVIOInterruptCB *)&(h->interrupt_callback);
 
     av_strstart(arg, "ijkio:", &arg);
@@ -80,8 +80,8 @@ static int ijkio_read(URLContext *h, unsigned char *buf, int size)
     if (!c || !c->io_manager_ctx_intptr)
         return -1;
 
-    ((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)))->cur_ffmpeg_ctx  = c;
-    return ijkio_manager_io_read((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)), buf, size);
+    ((IjkIOManagerContext *)(ijk_av_dict_strtoptr(c->io_manager_ctx_intptr)))->cur_ffmpeg_ctx  = c;
+    return ijkio_manager_io_read((IjkIOManagerContext *)(ijk_av_dict_strtoptr(c->io_manager_ctx_intptr)), buf, size);
 }
 
 static int64_t ijkio_seek(URLContext *h, int64_t offset, int whence)
@@ -91,8 +91,8 @@ static int64_t ijkio_seek(URLContext *h, int64_t offset, int whence)
     if (!c || !c->io_manager_ctx_intptr)
         return -1;
 
-    ((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)))->cur_ffmpeg_ctx  = c;
-    return ijkio_manager_io_seek((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)), offset, whence);
+    ((IjkIOManagerContext *)(ijk_av_dict_strtoptr(c->io_manager_ctx_intptr)))->cur_ffmpeg_ctx  = c;
+    return ijkio_manager_io_seek((IjkIOManagerContext *)(ijk_av_dict_strtoptr(c->io_manager_ctx_intptr)), offset, whence);
 }
 
 static int ijkio_close(URLContext *h)
@@ -102,8 +102,8 @@ static int ijkio_close(URLContext *h)
     if (!c || !c->io_manager_ctx_intptr)
         return -1;
 
-    ((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)))->cur_ffmpeg_ctx  = c;
-    return ijkio_manager_io_close((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)));
+    ((IjkIOManagerContext *)(ijk_av_dict_strtoptr(c->io_manager_ctx_intptr)))->cur_ffmpeg_ctx  = c;
+    return ijkio_manager_io_close((IjkIOManagerContext *)(ijk_av_dict_strtoptr(c->io_manager_ctx_intptr)));
 }
 
 #define OFFSET(x) offsetof(Context, x)

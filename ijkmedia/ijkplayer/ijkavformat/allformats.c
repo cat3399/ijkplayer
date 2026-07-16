@@ -25,6 +25,8 @@
 #include "libavformat/url.h"
 #include "libavformat/version.h"
 
+#if LIBAVFORMAT_VERSION_MAJOR < 59
+
 #define IJK_REGISTER_DEMUXER(x)                                         \
     {                                                                   \
         extern AVInputFormat ijkff_##x##_demuxer;                       \
@@ -90,3 +92,10 @@ void ijkav_register_all(void)
     IJK_REGISTER_DEMUXER(ijklas);
     av_log(NULL, AV_LOG_INFO, "===== custom modules end =====\n");
 }
+#else
+void ijkav_register_all(void)
+{
+    /* FFmpeg 5+ removed runtime format/protocol registration. Custom IJK
+     * modules will be compiled into FFmpeg after the core player port. */
+}
+#endif

@@ -22,7 +22,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern IjkURLProtocol ijkio_ffio_protocol;
 #ifdef __ANDROID__
 extern IjkURLProtocol ijkio_androidio_protocol;
 #endif
@@ -39,10 +38,6 @@ int ijkio_alloc_url(IjkURLContext **ph, const char *url) {
         h = (IjkURLContext *)calloc(1, sizeof(IjkURLContext));
         h->prot = &ijkio_cache_protocol;
         h->priv_data = calloc(1, ijkio_cache_protocol.priv_data_size);
-    } else if (!strncmp(url, "ffio:", strlen("ffio:"))) {
-        h = (IjkURLContext *)calloc(1, sizeof(IjkURLContext));
-        h->prot = &ijkio_ffio_protocol;
-        h->priv_data = calloc(1, ijkio_ffio_protocol.priv_data_size);
     } else if (!strncmp(url, "httphook:", strlen("httphook:"))) {
         h = (IjkURLContext *)calloc(1, sizeof(IjkURLContext));
         h->prot = &ijkio_httphook_protocol;
