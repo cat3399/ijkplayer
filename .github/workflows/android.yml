@@ -69,12 +69,12 @@ jobs:
       run: |
         cd FFToolChain
         ./main.sh install -p android -l "soundtouch yuv openssl xml2"
-    - name: Build ijkffmpeg (dash+libxml2 enabled)
+    - name: Build ijkffmpeg7 (dash+libxml2 enabled)
       run: |
         set -euo pipefail
         cd FFToolChain
-        ./main.sh init -p android -l ijkffmpeg
-        ./main.sh compile -p android -l ijkffmpeg -c rebuild
+        ./main.sh init -p android -l ijkffmpeg7
+        ./main.sh compile -p android -l ijkffmpeg7 -c rebuild
     - name: Build android aar
       run: cd android && ./build-aar.sh
     - name: Verify dash demuxer enabled
@@ -83,8 +83,12 @@ jobs:
         aar=$(ls -1 android/ijkplayer/ijkplayer-cmake/build/outputs/aar/*.aar | head -n 1)
         mkdir -p /tmp/ijk-aar && cd /tmp/ijk-aar
         unzip -q "$GITHUB_WORKSPACE/$aar"
-        strings jni/arm64-v8a/libijkplayer.so | grep -- "--enable-demuxer=dash"
-        strings jni/arm64-v8a/libijkplayer.so | grep -- "--enable-libxml2"
+        for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+          so="jni/$abi/libijkplayer.so"
+          test -s "$so"
+          strings "$so" | grep -- "--enable-demuxer=dash"
+          strings "$so" | grep -- "--enable-libxml2"
+        done
     - name: Upload Release Asset
       env:
         GH_TOKEN: ${{ github.token }}
