@@ -39,7 +39,7 @@
 #include "libavformat/url.h"
 #include <stdint.h>
 
-#include "libavutil/application.h"
+#include "ijkapplication.h"
 
 #if HAVE_UNISTD_H
 #include <unistd.h>

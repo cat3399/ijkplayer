@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
-#include "libavutil/application.h"
+#include "ijkapplication.h"
 #include "libavutil/error.h"
 #include "libavutil/mem.h"
 
