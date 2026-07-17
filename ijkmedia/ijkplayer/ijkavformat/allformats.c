@@ -22,10 +22,11 @@
  */
 
 #include "libavformat/avformat.h"
-#include "libavformat/url.h"
 #include "libavformat/version.h"
 
 #if LIBAVFORMAT_VERSION_MAJOR < 59
+
+#include "libavformat/url.h"
 
 #define IJK_REGISTER_DEMUXER(x)                                         \
     {                                                                   \

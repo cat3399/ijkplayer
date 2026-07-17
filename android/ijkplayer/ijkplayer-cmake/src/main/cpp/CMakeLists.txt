@@ -43,6 +43,7 @@ file(GLOB_RECURSE SOURCE_IJKPLAYER ${ijkmedia}/ijkplayer/*.c ${ijkmedia}/ijkplay
 # keep them out of the core FFmpeg 7 compilation checkpoint for now.
 list(FILTER SOURCE_IJKPLAYER EXCLUDE REGEX "/ijkavformat/(ijklivehook|ijklas|ijkasync)\\.c$")
 list(FILTER SOURCE_IJKPLAYER EXCLUDE REGEX "/ijkavformat/(ijkioffio|ijklongurl|ijksegment|ijkurlhook)\\.c$")
+list(FILTER SOURCE_IJKPLAYER EXCLUDE REGEX "/ijkavformat/(ijkio|ijkmediadatasource)\\.c$")
 file(GLOB_RECURSE SOURCE_SOUNDTOUCH ${ijkmedia}/ijksoundtouch/ijksoundtouch_wrap.cpp)
 
 add_library(${CMAKE_PROJECT_NAME}

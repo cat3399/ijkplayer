@@ -20,7 +20,6 @@
  */
 #include "ijkiourl.h"
 #include "libavformat/avformat.h"
-#include "libavformat/url.h"
 #include "libavutil/avstring.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
@@ -37,7 +36,6 @@ typedef struct IjkIOAndroidioContext {
     jobject         ijkio_androidio;
     jbyteArray      jbuffer;
     int             jbuffer_capacity;
-    URLContext *inner;
 } IjkIOAndroidioContext;
 
 static int ijkio_androidio_open(IjkURLContext *h, const char *url, int flags, IjkAVDictionary **options) {
