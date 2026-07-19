@@ -287,6 +287,80 @@ static void packet_queue_flush(PacketQueue *q)
     SDL_UnlockMutex(q->mutex);
 }
 
+static int packet_queue_seek_forward(PacketQueue *q, AVStream *st,
+                                     int64_t target_us, int keep_keyframe,
+                                     int apply)
+{
+    MyAVPacketList *pkt;
+    MyAVPacketList *last_key = NULL;
+    MyAVPacketList *keep_from = NULL;
+    MyAVPacketList *flush;
+    int64_t target;
+
+    if (!q || !st)
+        return 0;
+
+    target = av_rescale_q(target_us, AV_TIME_BASE_Q, st->time_base);
+    SDL_LockMutex(q->mutex);
+    for (pkt = q->first_pkt; pkt; pkt = pkt->next) {
+        if (pkt->pkt.stream_index != st->index || pkt->pkt.pts == AV_NOPTS_VALUE)
+            continue;
+        if (keep_keyframe && (pkt->pkt.flags & AV_PKT_FLAG_KEY) && pkt->pkt.pts <= target)
+            last_key = pkt;
+        if (pkt->pkt.pts >= target) {
+            keep_from = keep_keyframe ? last_key : pkt;
+            break;
+        }
+    }
+
+    if (!keep_from || !apply) {
+        SDL_UnlockMutex(q->mutex);
+        return keep_from != NULL;
+    }
+
+    flush = q->recycle_pkt;
+    if (flush)
+        q->recycle_pkt = flush->next;
+    else
+        flush = av_malloc(sizeof(*flush));
+    if (!flush) {
+        SDL_UnlockMutex(q->mutex);
+        return 0;
+    }
+
+    while (q->first_pkt && q->first_pkt != keep_from) {
+        MyAVPacketList *discard = q->first_pkt;
+        q->first_pkt = discard->next;
+        av_packet_unref(&discard->pkt);
+        discard->next = q->recycle_pkt;
+        q->recycle_pkt = discard;
+        q->nb_packets--;
+    }
+
+    q->serial++;
+    q->last_pkt = NULL;
+    q->size = 0;
+    q->duration = 0;
+    for (pkt = q->first_pkt; pkt; pkt = pkt->next) {
+        pkt->serial = q->serial;
+        q->last_pkt = pkt;
+        q->size += pkt->pkt.size + sizeof(*pkt);
+        q->duration += FFMAX(pkt->pkt.duration, MIN_PKT_DURATION);
+    }
+
+    flush->pkt = flush_pkt;
+    flush->serial = q->serial;
+    flush->next = q->first_pkt;
+    q->first_pkt = flush;
+    if (!q->last_pkt)
+        q->last_pkt = flush;
+    q->nb_packets++;
+    q->size += sizeof(*flush);
+    SDL_CondSignal(q->cond);
+    SDL_UnlockMutex(q->mutex);
+    return 1;
+}
+
 static void packet_queue_destroy(PacketQueue *q)
 {
     packet_queue_flush(q);
@@ -3422,10 +3496,28 @@ static int read_thread(void *arg)
 // FIXME the +-2 is due to rounding being not done in the correct direction in generation
 //      of the seek_pos/seek_rel variables
 
-            ffp_toggle_buffering(ffp, 1);
-            ffp_notify_msg3(ffp, FFP_MSG_BUFFERING_UPDATE, 0, 0);
+            double current_clock = get_master_clock(is);
+            int cache_seek = !(is->seek_flags & AVSEEK_FLAG_BYTE) &&
+                             !isnan(current_clock) &&
+                             seek_target > (int64_t)(current_clock * AV_TIME_BASE) &&
+                             (is->video_stream < 0 ||
+                              packet_queue_seek_forward(&is->videoq, is->video_st,
+                                                        seek_target, 1, 0)) &&
+                             (is->audio_stream < 0 ||
+                              packet_queue_seek_forward(&is->audioq, is->audio_st,
+                                                        seek_target, 0, 0));
+
             is->active_seek_generation = seek_generation;
-            ret = avformat_seek_file(is->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
+            if (cache_seek) {
+                ret = 0;
+                av_log(ffp, AV_LOG_INFO,
+                       "cache forward seek target=%"PRId64"\n", seek_target);
+            } else {
+                ffp_toggle_buffering(ffp, 1);
+                ffp_notify_msg3(ffp, FFP_MSG_BUFFERING_UPDATE, 0, 0);
+                ret = avformat_seek_file(is->ic, -1, seek_min, seek_target,
+                                         seek_max, is->seek_flags);
+            }
             is->active_seek_generation = 0;
             if (seek_generation != is->seek_generation) {
                 av_log(ffp, AV_LOG_VERBOSE,
@@ -3437,7 +3529,15 @@ static int read_thread(void *arg)
                 av_log(NULL, AV_LOG_ERROR,
                        "%s: error while seeking\n", is->ic->url);
             } else {
-                if (is->audio_stream >= 0) {
+                if (cache_seek) {
+                    if (is->video_stream >= 0)
+                        packet_queue_seek_forward(&is->videoq, is->video_st,
+                                                  seek_target, 1, 1);
+                    if (is->audio_stream >= 0)
+                        packet_queue_seek_forward(&is->audioq, is->audio_st,
+                                                  seek_target, 0, 1);
+                }
+                if (is->audio_stream >= 0 && !cache_seek) {
                     packet_queue_flush(&is->audioq);
                     packet_queue_put(&is->audioq, &flush_pkt);
                     // TODO: clear invaild audio data
@@ -3451,8 +3551,10 @@ static int read_thread(void *arg)
                     if (ffp->node_vdec) {
                         ffpipenode_flush(ffp->node_vdec);
                     }
-                    packet_queue_flush(&is->videoq);
-                    packet_queue_put(&is->videoq, &flush_pkt);
+                    if (!cache_seek) {
+                        packet_queue_flush(&is->videoq);
+                        packet_queue_put(&is->videoq, &flush_pkt);
+                    }
                 }
                 if (is->seek_flags & AVSEEK_FLAG_BYTE) {
                    set_clock(&is->extclk, NAN, 0);
@@ -3465,6 +3567,16 @@ static int read_thread(void *arg)
                 is->latest_seek_load_start_at = av_gettime();
             }
             ffp->dcc.current_high_water_mark_in_ms = ffp->dcc.first_high_water_mark_in_ms;
+            if (ffp->enable_accurate_seek) {
+                is->drop_aframe_count = 0;
+                is->drop_vframe_count = 0;
+                SDL_LockMutex(is->accurate_seek_mutex);
+                is->video_accurate_seek_req = is->video_stream >= 0;
+                is->audio_accurate_seek_req = is->audio_stream >= 0;
+                SDL_CondSignal(is->audio_accurate_seek_cond);
+                SDL_CondSignal(is->video_accurate_seek_cond);
+                SDL_UnlockMutex(is->accurate_seek_mutex);
+            }
             is->seek_req = 0;
             is->queue_attachments_req = 1;
             is->eof = 0;
@@ -3485,23 +3597,9 @@ static int read_thread(void *arg)
                 step_to_next_frame_l(ffp);
             SDL_UnlockMutex(ffp->is->play_mutex);
 
-            if (ffp->enable_accurate_seek) {
-                is->drop_aframe_count = 0;
-                is->drop_vframe_count = 0;
-                SDL_LockMutex(is->accurate_seek_mutex);
-                if (is->video_stream >= 0) {
-                    is->video_accurate_seek_req = 1;
-                }
-                if (is->audio_stream >= 0) {
-                    is->audio_accurate_seek_req = 1;
-                }
-                SDL_CondSignal(is->audio_accurate_seek_cond);
-                SDL_CondSignal(is->video_accurate_seek_cond);
-                SDL_UnlockMutex(is->accurate_seek_mutex);
-            }
-
             ffp_notify_msg3(ffp, FFP_MSG_SEEK_COMPLETE, (int)fftime_to_milliseconds(seek_target), ret);
-            ffp_toggle_buffering(ffp, 1);
+            if (!cache_seek)
+                ffp_toggle_buffering(ffp, 1);
         }
         if (is->queue_attachments_req) {
             if (is->video_st && (is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
